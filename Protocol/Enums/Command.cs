@@ -1,0 +1,43 @@
+﻿namespace SharpFTP.Server.Protocol.Enums
+{
+    public enum Command
+        {
+            USER,              
+            PASS,
+            ACCT,
+            REIN,
+            QUIT,
+            PORT,
+            PASV,
+            TYPE,
+            STRU,
+            MODE,
+            RETR,
+            STOR,
+            APPE,
+            MLFL,
+            MAIL,
+            MSND,
+            MSOM,
+            MSAM,
+            MRSQ,
+            MRCP,
+            ALLO, 
+            REST,
+            RNFR,
+            RNTO,
+            ABOR,
+            DELE,
+            CWD ,
+            LIST,
+            NLST,
+            SITE,
+            STAT,
+            HELP,
+            NOOP,
+            SYST,
+            PWD,
+        SIZE,
+        MKD
+    }
+}
