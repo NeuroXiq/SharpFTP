@@ -81,9 +81,6 @@ namespace SharpFTP.Server.DataTransfer
         /// <summary>
         /// Writing received bytes in to passed stream
         /// </summary>
-        /// <param name="receivedStream">
-        /// Stream which bytes are written
-        /// </param>
         /// <param name="timeout">
         /// Maximum wait time for new packet in miliseconds
         /// </param>
