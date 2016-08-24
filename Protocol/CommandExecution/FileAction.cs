@@ -288,22 +288,6 @@ namespace SharpFTP.Server.Protocol.CommandExecution
             replySender.SendReply(226, message);
         }
 
-        /*for (int i = 0; i < files.Length; i++)
-                    transferParameters.DataTransfer
-                        .SendTextData(
-                        $"{files[i]}\r\n",
-                        transferParameters.CharMode,
-                        transferParameters.Mode);
-                //sending directories
-                for (int i = 0; i < directories.Length; i++)
-                    transferParameters.DataTransfer
-                        .SendTextData(
-                        $"{directories[i]}\r\n",
-                        transferParameters.CharMode,
-                        transferParameters.Mode);
-*/
-
-
         private void ExecuteRestCommand(string parameter)
         {
             int restParsed;

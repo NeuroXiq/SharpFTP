@@ -14,7 +14,7 @@ namespace SharpFTP.Server.Protocol.CommandExecution
 {
     class Login : CommandExecutionBase
     {
-        public static Command[] ImplementedCommands { get; private set; } = new Command[] { USER, PASS, /*ACCT,*/ CWD };
+        public static Command[] ImplementedCommands { get; private set; } = new Command[] { USER, PASS, CWD };
 
         public bool IsLogged { get; private set; } = false;
         public string UserName { get; private set; } = string.Empty;
@@ -34,11 +34,9 @@ namespace SharpFTP.Server.Protocol.CommandExecution
                 case USER:
                     ExecuteUserCommand(command.Parameter);
                     break;
-                case PASS://bia cem wod szkl
+                case PASS:
                     ExecutePassCommand(command.Parameter);
                     break;
-                //case ACCT:
-                //    break;
                 case CWD:
                     ExecuteCwdCommand(command.Parameter);
                     break;
