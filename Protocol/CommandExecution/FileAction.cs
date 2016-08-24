@@ -4,14 +4,11 @@ using System.Net.Sockets;
 using SharpFTP.Server.Protocol.Enums;
 using SharpFTP.Server.FileSystem.Enums;
 using static SharpFTP.Server.Protocol.Enums.Command;
-using System.Net;
 using SharpFTP.Server.FileSystem;
 using System.IO;
-using System.Threading;
-using System.Text;
 using SharpFTP.Server.Protocol.Commands;
 using System.Linq;
-using System.Threading.Tasks;
+using static SharpFTP.Server.UserDataContext;
 
 namespace SharpFTP.Server.Protocol.CommandExecution
 {
@@ -147,10 +144,15 @@ namespace SharpFTP.Server.Protocol.CommandExecution
         {
             if (login.IsLogged)
             {
-                string winPath = pathConverter.ConvertToWindowsPath(parameter, directoryContext.GetOriginDirectory(login.UserName));
-                if (directoryContext.CanDelete(winPath, login.UserName))
-                {
-                    directoryContext.DeletePath(winPath);
+                UserInfo userInfo = login.GetUserInfo();
+                string winPath = pathConverter.ConvertToWindowsPath(parameter, login.DirectorySession.OriginDirectory);
+
+                if(usersManage.CanSeePath(userInfo, parameter))
+                {   
+                    if ((usersManage.GetPathPermission(userInfo, parameter) & FilePermission.Write) == FilePermission.Write)
+                    {
+                        directoryContext.DeletePath(winPath);
+                    }
                     replySender.SendReply(250, "file deleted successful");
                 }
                 else replySender.SendReply(450, "action not taken");
@@ -195,7 +197,7 @@ namespace SharpFTP.Server.Protocol.CommandExecution
         {
             if (login.IsLogged)
             {
-                //257 "pathname" created
+                
                 if (directoryContext.CanCreateDirectory(parameter, login.UserName))
                 {
                     directoryContext.CreateDirectory(parameter);
@@ -305,7 +307,7 @@ namespace SharpFTP.Server.Protocol.CommandExecution
 
         private void ExecuteAlloCommand(string parameter)
         {
-            //200,202
+            
             string[] data = parameter.Split(' ');
             int memoryToAllocate;
 

@@ -1,5 +1,4 @@
 ﻿using System;
-using SharpFTP.Server.Protocol;
 
 namespace SharpFTP.Server
 {
@@ -7,9 +6,9 @@ namespace SharpFTP.Server
     {
         private static volatile ServerDataContext instance;
         private static object threadSafe = new object();
-        private static IDataContextProvider dataContext;
+        private static UserDataContext userDataContext;
 
-        public IDataContextProvider DataContextInstance { get { return dataContext; } }
+        public UserDataContext UserDataContextProvider { get { return userDataContext; } }
 
         public static ServerDataContext Instance
         {
@@ -21,8 +20,8 @@ namespace SharpFTP.Server
                     {
                         if (instance == null)
                         {
-                            if (dataContext == null)
-                                throw new Exception("Data context is not set in current instance!");
+                            if (userDataContext == null)
+                                throw new Exception("User data context is nullable value, cannot initialize ServerDataContext");
                             instance = new ServerDataContext();
                         }
                     }
@@ -30,21 +29,15 @@ namespace SharpFTP.Server
                 return instance;
             }
         }
+
         private ServerDataContext()
         {
 
         }
 
-        public static void SetDataContext(IDataContextProvider contextProvider)
+        public static void SetDataContext(UserDataContext userDataContext)
         {
-            if (dataContext == null)
-            {
-                dataContext = contextProvider;
-            }
-            else
-            {
-                throw new Exception("Cannot set second data context provider");
-            }
-        }
+            userDataContext = userDataContext;
+        }   
     }
 }

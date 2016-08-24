@@ -20,7 +20,7 @@ namespace SharpFTP.Server.FileSystem
             workingPath = workingPath.Replace('/', '\\');
 
             string rootBegin = windowsRootBegin.Trim('\\', ' ');
-            workingPath = string.Format("{0}\\{1}",rootBegin, workingPath);
+            workingPath = string.Format("{0}\\{1}\\",rootBegin, workingPath);
 
             return workingPath;
         }
@@ -35,11 +35,11 @@ namespace SharpFTP.Server.FileSystem
             string winPath = windowsPath.Trim('\\', ' ');
             string rootPath = windowsPath.Trim('\\', ' ');
 
-            // maybe directory now have format: "X:\" where X is Disc name (D,E,C etc.)
+            // maybe directory have format: "X:\" where X is Disc name (D,E,C etc.)
             if (winPath.Length == 2 && winPath == rootPath)
                 return $"{rootPath}\\";
 
-
+            //removing windows root substring
             winPath = winPath.Remove(rootPath.Length);
             string unixPath = winPath.Replace('\\', '/');
 

@@ -12,7 +12,7 @@ namespace SharpFTP.Server
         private ManualResetEvent wait;
         public int ConnectedClients { get; private set; }
 
-        public FTPService(IDataContextProvider provider)
+        public FTPService(UserDataContext provider)
         {
             server = new TcpListener(IPAddress.Any,21);
             ServerDataContext.SetDataContext(provider);

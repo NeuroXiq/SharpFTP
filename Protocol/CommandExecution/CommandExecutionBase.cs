@@ -11,9 +11,7 @@ namespace SharpFTP.Server.CommandExecution
     abstract class CommandExecutionBase
     {
         protected TcpClient client;
-        protected IDataContextProvider dataContext;
-        protected IDirectoryProvider directoryContext;
-        protected IUserProvider userContext;
+        protected UserDataContext usersManage;
         protected ReplySender replySender;
         protected CommandReceive receiver;
         protected CommandParser commandParser;
@@ -21,14 +19,10 @@ namespace SharpFTP.Server.CommandExecution
         public CommandExecutionBase(TcpClient client)
         {
             this.client = client;
-            dataContext = ServerDataContext.Instance.DataContextInstance;
-            directoryContext = dataContext.DirectoryProvider;
-            userContext = dataContext.UserProvider;
             receiver = new CommandReceive(client);
             replySender = new ReplySender(client);
             commandParser = new CommandParser();
-
-            
+            usersManage = ServerDataContext.Instance.UserDataContextProvider;
         }
 
         public abstract void ExecuteCommand(ClientCommand command);

@@ -7,8 +7,18 @@ namespace SharpFTP.Server.FileSystem
 {
     class DirectorySession
     {
+        ///<summary>
+        ///Current working directory in Unix format
+        ///</summary>
         public string WorkingUnixDirectory { get; private set; }
+        ///<summary>
+        ///Current working directory in Windows format
+        ///</summary>
         public string WorkingWindowsDirectory { get; private set; }
+        /// <summary>
+        /// Represents source directory in Windows format which is converted to Unix root path.
+        /// </summary>
+        public string OriginDirectory { get { return windowsOriginDirectory; } }
 
         private readonly string windowsOriginDirectory;
         private PathConverter pathConverter;
@@ -16,7 +26,7 @@ namespace SharpFTP.Server.FileSystem
         public DirectorySession(string windowsOriginDirectory)
         {
             this.windowsOriginDirectory = GetWindowsOriginDirectory(windowsOriginDirectory);
-            WorkingWindowsDirectory = windowsOriginDirectory;
+            this.WorkingWindowsDirectory = windowsOriginDirectory;
             this.WorkingUnixDirectory = "/";
             this.pathConverter = new PathConverter();
         }
@@ -24,8 +34,7 @@ namespace SharpFTP.Server.FileSystem
         private string GetWindowsOriginDirectory(string windowsOriginDirectory)
         {
             //windows dir should have '\' at the end.
-            string winDir = windowsOriginDirectory.Trim(' ','\\') + "\\";
-            return winDir;
+            return windowsOriginDirectory.Trim(' ','\\') + Path.DirectorySeparatorChar;
         }
 
         ///<summary>
@@ -44,10 +53,6 @@ namespace SharpFTP.Server.FileSystem
             WorkingUnixDirectory = unixDirectory;
             WorkingWindowsDirectory = pathConverter.ConvertToWindowsPath(unixDirectory, windowsOriginDirectory);
 
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("\tUnix => {0}\n\tWin => {1}",WorkingUnixDirectory,WorkingWindowsDirectory);
-            Console.ForegroundColor = ConsoleColor.Gray;
-
             return result;
         }
         
@@ -63,12 +68,12 @@ namespace SharpFTP.Server.FileSystem
 
                 string readyPath = string.Format(
                     DateTimeFormatInfo.InvariantInfo,
-                    "-rw-r--r--  1 0 0 someuserExample   {0} {1:MMM d HH:mm} {2}",
+                    "-rw-r--r--  1 0 0 currentUser   {0} {1:MMM d HH:mm} {2}",
                     info.Length,
                     info.CreationTime,
                     info.Name);
 
-                unixformatFiles[i] = readyPath;//"-rw-r--r-- 1 0 0 123213 Feb 19 2016 1000GB.zip";//readyPath;
+                unixformatFiles[i] = readyPath;
             }
 
             return unixformatFiles;
@@ -94,29 +99,5 @@ namespace SharpFTP.Server.FileSystem
 
             return unixformatDirectories;
         }
-
-        /*if (unixDir == "/" )
-            {
-                WorkingUnixDirectory = "/";
-                WorkingWindowsDirectory = windowsOriginDirectory;
-                result = true;
-            }
-            else
-            {
-                string folder = unixDirectory.Trim('/', ' ');
-                string winfolder = unixDir
-                    .Trim('/', '\\') // deleting / from start position /a/b/c/d/ => a/b/c/d
-                    .Replace('/', '\\'); // replace / to \ => a\b\c\d
-
-                winfolder = $"{windowsOriginDirectory}{winfolder}\\";
-                
-                WorkingWindowsDirectory = winfolder;
-                WorkingUnixDirectory = $"/{folder}";
-                result = true;
-            }
-
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("\tWinDir => {0}\n\tUnixDir => {1}",WorkingWindowsDirectory,WorkingUnixDirectory);
-            Console.ForegroundColor = ConsoleColor.Gray;*/
     }
 }

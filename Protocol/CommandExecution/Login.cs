@@ -1,14 +1,11 @@
 ﻿using SharpFTP.Server.CommandExecution;
 using SharpFTP.Server.FileSystem;
-using SharpFTP.Server.FileSystem.Enums;
-using SharpFTP.Server.Protocol;
 using SharpFTP.Server.Protocol.Commands;
 using SharpFTP.Server.Protocol.Enums;
 using System;
-using System.IO;
-using System.Linq;
 using System.Net.Sockets;
 using static SharpFTP.Server.Protocol.Enums.Command;
+using static SharpFTP.Server.UserDataContext;
 
 namespace SharpFTP.Server.Protocol.CommandExecution
 {
@@ -18,6 +15,7 @@ namespace SharpFTP.Server.Protocol.CommandExecution
 
         public bool IsLogged { get; private set; } = false;
         public string UserName { get; private set; } = string.Empty;
+        public string Password { get; private set; } = string.Empty;
         public DirectorySession DirectorySession { get; private set; }
 
         private PathConverter pathConverter;
@@ -49,6 +47,11 @@ namespace SharpFTP.Server.Protocol.CommandExecution
             this.UserName = string.Empty;
             this.IsLogged = false;
             this.DirectorySession = null;
+        }
+
+        public UserInfo GetUserInfo()
+        {
+            return new UserInfo(UserName, Password);
         }
 
         private void ExecuteCwdCommand(string parameter)

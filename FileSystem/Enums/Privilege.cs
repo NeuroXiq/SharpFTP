@@ -7,6 +7,5 @@ namespace SharpFTP.Server.FileSystem.Enums
     {
         Read,
         Write,
-        ACCESS_DENIED
     }
 }
