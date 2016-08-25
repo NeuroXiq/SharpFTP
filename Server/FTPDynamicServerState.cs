@@ -156,7 +156,7 @@ namespace SharpFTP.Server
             }
             if (availablePorts.Count > 0)
             {
-                throw new InvalidOperationException("Ports cannot be setted multiple times");
+                throw new InvalidOperationException("Ports cannot be set multiple times");
             }
             lock (threadSafe)
             {
