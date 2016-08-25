@@ -38,9 +38,11 @@ namespace SharpFTP.Server.Connection
         public void SendRawReply(byte[] repeadBytes)
         {
             stream.Write(repeadBytes, 0, repeadBytes.Length);
+#if DEBUG
             System.Console.ForegroundColor = System.ConsoleColor.Green;
             System.Console.WriteLine($"Sended reply => {System.Text.Encoding.ASCII.GetString(repeadBytes).TrimEnd('\r', '\n')}");
-            System.Console.ForegroundColor = System.ConsoleColor.Gray;  
+            System.Console.ForegroundColor = System.ConsoleColor.Gray;
+#endif
         }
     }
 }

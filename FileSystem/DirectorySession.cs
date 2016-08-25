@@ -48,10 +48,24 @@ namespace SharpFTP.Server.FileSystem
         ///</returns>
         public bool ChangeWorkingDirectory(string unixDirectory)
         {
-            bool result = false;
+            bool result = true;
 
             WorkingUnixDirectory = unixDirectory;
-            WorkingWindowsDirectory = pathConverter.ConvertToWindowsPath(unixDirectory, windowsOriginDirectory);
+            try
+            {
+                WorkingWindowsDirectory = pathConverter.ConvertToWindowsDirectory(unixDirectory, windowsOriginDirectory);
+            }
+            catch 
+            {
+
+                result = false;
+            }
+
+#if DEBUG
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("\tunix:{0}\n\twin:{1}",WorkingUnixDirectory,WorkingWindowsDirectory);
+            Console.ForegroundColor = ConsoleColor.Gray;
+#endif
 
             return result;
         }

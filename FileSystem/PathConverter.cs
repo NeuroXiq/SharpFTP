@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 
 namespace SharpFTP.Server.FileSystem
 {
@@ -9,12 +10,15 @@ namespace SharpFTP.Server.FileSystem
 
         }
 
-        public string ConvertToWindowsPath(string unixPath,string windowsRootBegin)
+        public string ConvertToWindowsDirectory(string unixPath,string windowsRootBegin)
         {
             if(string.IsNullOrWhiteSpace(unixPath))
                 throw new ArgumentNullException("unixPath is empty or contains only white spaces");
             if (string.IsNullOrWhiteSpace(windowsRootBegin))
                 throw new ArgumentNullException("windowsRootBegin is empty or contain only white spaces");
+
+            if (unixPath.Trim() == "/")
+                return windowsRootBegin.TrimEnd('\\') + Path.DirectorySeparatorChar;
 
             string workingPath = unixPath.Trim('/', ' ');
             workingPath = workingPath.Replace('/', '\\');
@@ -25,7 +29,7 @@ namespace SharpFTP.Server.FileSystem
             return workingPath;
         }
 
-        public string ConvertToUnixPath(string windowsPath, string windowsRootSubstring)
+        public string ConvertToUnixDirectory(string windowsPath, string windowsRootSubstring)
         {
             if (string.IsNullOrWhiteSpace(windowsPath))
                 throw new ArgumentNullException("windowsPath is empty or contains only white spaces");
@@ -46,6 +50,20 @@ namespace SharpFTP.Server.FileSystem
             unixPath = $"/{unixPath}";
 
             return unixPath;
+        }
+
+        public string ConvertToWindowsFileName(string unixFileName, string windowsRootBegin)
+        {
+            if (string.IsNullOrWhiteSpace(unixFileName))
+                throw new ArgumentNullException("unixFileName is empty or contains only white spaces");
+            if (string.IsNullOrWhiteSpace(windowsRootBegin))
+                throw new ArgumentNullException("winodwsRootBegin is empty or contains only white spaces");
+
+            string winFileName = unixFileName.Trim(' ', '/');
+            winFileName = winFileName.Replace('/', '\\');
+            winFileName = string.Format("{0}\\{1}", windowsRootBegin.TrimEnd('\\'), winFileName);
+
+            return winFileName;
         }
     }
 }

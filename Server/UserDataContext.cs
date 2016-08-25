@@ -6,12 +6,12 @@ namespace SharpFTP.Server
     {
         public struct UserInfo
         {
-            string UserName;
-            string Password;
+            public string UserName;
+            public string Password;
 
             public UserInfo(string userName, string password)
             {
-                UserName = name;
+                UserName = userName;
                 Password = password;
             }
         }
@@ -21,9 +21,11 @@ namespace SharpFTP.Server
             
         }
 
-        public abstract bool NeedPassword(UserInfo userInfo);
-        public abstract bool IsPasswordCorrect(UserInfo userInfo);
-        public abstract bool CanSeePath(UserInfo userInfo, string path);
+        public abstract bool NeedPassword(string userPassword);
+        public abstract bool Exist(string userName);
+        public abstract bool IsPasswordCorrect(string userName,string password);
+
+        public abstract bool HaveAccess(UserInfo userInfo, string path);
         public abstract string GetOriginDirectory(UserInfo userInfo);
         public abstract FilePermission GetPathPermission(UserInfo userInfo, string path);
     }

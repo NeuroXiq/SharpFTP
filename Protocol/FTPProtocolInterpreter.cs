@@ -40,14 +40,38 @@ namespace SharpFTP.Server.Protocol
         /// <returns> If protocol interpreter can execute new command returns true. </returns>
         public bool ProcessNextCommand()
         {
-            CommandParser.ParseResult result;
-            ClientCommand command = receiver.ReceiveCommand(out result);
-            if (result == CommandParser.ParseResult.CommandOk)
-                HandleCommand(command);
-            else SendParsingErrorReply(result);
-            if (command.CommandType == Command.QUIT)
+            bool canDoOperation = CheckoutServerState();
+
+            if (canDoOperation)
+            {
+                CommandParser.ParseResult result;
+                ClientCommand command = receiver.ReceiveCommand(out result);
+
+                if (result == CommandParser.ParseResult.CommandOk)
+                    HandleCommand(command);
+                else SendParsingErrorReply(result);
+                if (command.CommandType == Command.QUIT)
+                {
+                    return false;
+                }
+                else return true;
+            }
+            return false;
+        }
+
+        private bool CheckoutServerState()
+        {
+            if (FTPDynamicServerState.IsSuspended)
+            {
+                replySender.SendReply(421, "service suspended, closing telnet connection");
                 return false;
-            else return true;
+            }
+            if (FTPDynamicServerState.MaximumConnections <= FTPDynamicServerState.CurrentConnections)
+            {
+                replySender.SendReply(421, "cannot connect - maximum connection reached, closing connection");
+                return false;
+            }
+            return true;
         }
 
         public void HandleCommand(ClientCommand command)
@@ -71,9 +95,15 @@ namespace SharpFTP.Server.Protocol
             informationalCommands.ExecuteCommand(command);
         }
 
-        public void PrepareToNewClient()
+        public bool PrepareToNewClient()
         {
-            replySender.SendReply(220);
+            if (FTPDynamicServerState.IsSuspended)
+            {
+                replySender.SendReply(120, $"service ready in {FTPDynamicServerState.SuspendTime} minutes");
+                return false;
+            }
+            replySender.SendReply(220,"ready accept new client");
+            return true;
         }
 
         private void ExecuteTransferParametersCommand(ClientCommand command)

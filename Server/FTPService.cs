@@ -42,10 +42,10 @@ namespace SharpFTP.Server
 
         private void HandleClient(TcpClient client)
         {
-            ++ConnectedClients;
+            FTPDynamicServerState.AddConnection();
             ClientSession session = new ClientSession(client);
             session.RunSession();
-            --ConnectedClients;
+            FTPDynamicServerState.RemoveConnection();
         }
     }
 }

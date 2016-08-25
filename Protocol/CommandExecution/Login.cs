@@ -3,6 +3,7 @@ using SharpFTP.Server.FileSystem;
 using SharpFTP.Server.Protocol.Commands;
 using SharpFTP.Server.Protocol.Enums;
 using System;
+using System.IO;
 using System.Net.Sockets;
 using static SharpFTP.Server.Protocol.Enums.Command;
 using static SharpFTP.Server.UserDataContext;
@@ -79,20 +80,20 @@ namespace SharpFTP.Server.Protocol.CommandExecution
         private void ExecutePassCommand(string parameter)
         {
             IsLogged = false;
-            if (userContext.RequirePassword(UserName))
+            if (usersManage.NeedPassword(parameter))
             {
-                if (userContext.PasswordCorrect(UserName, parameter))
+                if (usersManage.IsPasswordCorrect(UserName, parameter))
                 {
                     replySender.SendReply(230, "user logged in successful");
                     IsLogged = true;
-                    DirectorySession = new DirectorySession(directoryContext.GetOriginDirectory(UserName));
+                    DirectorySession = new DirectorySession(usersManage.GetOriginDirectory(GetUserInfo()));
                 }
                 else
                 {
                     replySender.SendReply(530, "not logged in");
                 }
             }
-            else replySender.SendReply(503, "bad sequenc of command (password not required)");
+            else replySender.SendReply(503, "bad sequence of command (password not required)");
         }
 
         private bool CanChangeDirectory(string unixPath)
@@ -102,12 +103,12 @@ namespace SharpFTP.Server.Protocol.CommandExecution
 
             try
             {
-                winPath = pathConverter.ConvertToWindowsPath(
-                unixPath, directoryContext.GetOriginDirectory(UserName));
+                winPath = pathConverter.ConvertToWindowsDirectory(
+                unixPath, usersManage.GetOriginDirectory(GetUserInfo()));
 
-                canChange = directoryContext.CanChangeDirectory(winPath, UserName);
+                canChange = usersManage.HaveAccess(GetUserInfo(), winPath) && Directory.Exists(winPath);
             }
-            catch (Exception e)
+            catch
             {
                 canChange = false;
             }
@@ -125,9 +126,9 @@ namespace SharpFTP.Server.Protocol.CommandExecution
             string message = "";
             IsLogged = false;
 
-            if (userContext.UserExist(userName))
+            if (usersManage.Exist(userName))
             {
-                if (userContext.RequirePassword(userName))
+                if (usersManage.NeedPassword(userName))
                 {
                     replyCode = 331;//password require
                     message = "password require";
@@ -136,7 +137,8 @@ namespace SharpFTP.Server.Protocol.CommandExecution
                 {
                     replySender.SendReply(230, "user logged in successful");
                     IsLogged = true;
-                    DirectorySession = new DirectorySession(directoryContext.GetOriginDirectory(UserName));
+                    this.UserName = userName;
+                    DirectorySession = new DirectorySession(usersManage.GetOriginDirectory(GetUserInfo()));
                 }
             }
             else //user does not exist in database.

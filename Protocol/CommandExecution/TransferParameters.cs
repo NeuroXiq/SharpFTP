@@ -133,10 +133,11 @@ namespace SharpFTP.Server.Protocol.CommandExecution
 
         private void ExecutePasvCommand()
         {
-            int port = FTPDynamicServerState.GetPasvPort();
+            int port;
+            TcpListener listener = FTPDynamicServerState.GetPasvListener(out port);
             string portString = $"{(int)(port / 256)},{port % 256}";
             string ipString = FTPDynamicServerState.GetIp().ToString().Replace('.', ',');
-            string reply = $"Entering Passive Mode. (192,168,1,2,{portString})";
+            string reply = $"Entering Passive Mode. ({ipString},{portString})";
             
             //accepting pasv connection
             string s = $"{227} {reply}\r\n";
@@ -145,7 +146,7 @@ namespace SharpFTP.Server.Protocol.CommandExecution
                 DataTransfer.CloseConnection();
             AbortTransferIsExist();
             replySender.SendRawReply(System.Text.Encoding.ASCII.GetBytes(s));
-            DataTransfer = FTPDataTransfer.AcceptPasvConnection(port,this);
+            DataTransfer = FTPDataTransfer.AcceptPasvConnection(listener,this);
         }
 
         private void AbortTransferIsExist()

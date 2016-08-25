@@ -9,6 +9,7 @@ using System.IO;
 using SharpFTP.Server.Protocol.Commands;
 using System.Linq;
 using static SharpFTP.Server.UserDataContext;
+using SharpFTP.Server.DataTransfer;
 
 namespace SharpFTP.Server.Protocol.CommandExecution
 {
@@ -21,11 +22,24 @@ namespace SharpFTP.Server.Protocol.CommandExecution
         public int RestStartPosition { get; private set; } = 0;
         public bool TransferingInProgress { get; private set; } = false;
 
+        private struct RenameCmdInfo
+        {
+            public string RenameFrom;
+            public string RenameTo;
+            public bool RnfrReceived;
+
+            public void Reset()
+            {
+                RenameFrom = string.Empty;
+                RenameTo = string.Empty;
+                RnfrReceived = false;
+            }
+        }
+
         private TransferParameters transferParameters;
         private PathConverter pathConverter;
         private Login login;
-        private string renameFrom;
-        private bool renameFromAccepted = false;
+        private RenameCmdInfo renameInfo;
 
         public FileAction(TcpClient client,TransferParameters transferParameters,Login login) : base(client)
         {
@@ -37,7 +51,12 @@ namespace SharpFTP.Server.Protocol.CommandExecution
 
         public override void ExecuteCommand(ClientCommand command)
         {
-            MemoryToAllocate = 0;
+            if (!login.IsLogged)
+            {
+                replySender.SendReply(530, "not logged in");
+                return;
+            }
+
             switch (command.CommandType)
             {
                 case ALLO:
@@ -83,55 +102,55 @@ namespace SharpFTP.Server.Protocol.CommandExecution
 
         private void ExecuteRntoCommand(string parameter)
         {
-            if (login.IsLogged)
-            {
-                string winSourceDir = pathConverter.ConvertToWindowsPath(renameFrom, directoryContext.GetOriginDirectory(login.UserName));
-                string winDestDir = pathConverter.ConvertToWindowsPath(parameter, directoryContext.GetOriginDirectory(login.UserName));
-                if (renameFromAccepted)
-                {
-                    bool success = directoryContext.RenamePath(winSourceDir,winDestDir);
-                    if (success)
-                    {
-                        replySender.SendReply(250, "renamed success");
-                    }
-                    else
-                    {
-                        replySender.SendReply(553, "request not takien - name not allowed");
-                    }
-                }
-                else
-                {
-                    replySender.SendReply(503, "bad sequence of command - first send rnfr");
-                }
-            }
-            else
-            {
-                replySender.SendReply(530, "not logged in");
-            }
-
-            renameFromAccepted = false;
+            //if (login.IsLogged)
+            //{
+            //    string winSourceDir = pathConverter.ConvertToWindowsPath(renameFrom, directoryContext.GetOriginDirectory(login.UserName));
+            //    string winDestDir = pathConverter.ConvertToWindowsPath(parameter, directoryContext.GetOriginDirectory(login.UserName));
+            //    if (renameFromAccepted)
+            //    {
+            //        bool success = directoryContext.RenamePath(winSourceDir,winDestDir);
+            //        if (success)
+            //        {
+            //            replySender.SendReply(250, "renamed success");
+            //        }
+            //        else
+            //        {
+            //            replySender.SendReply(553, "request not takien - name not allowed");
+            //        }
+            //    }
+            //    else
+            //    {
+            //        replySender.SendReply(503, "bad sequence of command - first send rnfr");
+            //    }
+            //}
+            //else
+            //{
+            //    replySender.SendReply(530, "not logged in");
+            //}
+            //
+            //renameFromAccepted = false;
         }
 
         private void ExecuteRnfrCommand(string parameter)
         {
-            if (login.IsLogged)
-            {
-                string winDir = pathConverter.ConvertToWindowsPath(parameter, directoryContext.GetOriginDirectory(login.UserName));
-                if (directoryContext.CanRename(winDir, login.UserName))
-                {
-                    this.renameFrom = parameter;
-                    this.renameFromAccepted = true;
-                    replySender.SendReply(350, "start renaming file");
-                }
-                else
-                {
-                    replySender.SendReply(450, "cannot change directory");
-                }
-            }
-            else
-            {
-                replySender.SendReply(530, "not logged in ");
-            }
+            //if (login.IsLogged)
+            //{
+            //    string winDir = pathConverter.ConvertToWindowsPath(parameter, directoryContext.GetOriginDirectory(login.UserName));
+            //    if (directoryContext.CanRename(winDir, login.UserName))
+            //    {
+            //        this.renameFrom = parameter;
+            //        this.renameFromAccepted = true;
+            //        replySender.SendReply(350, "start renaming file");
+            //    }
+            //    else
+            //    {
+            //        replySender.SendReply(450, "cannot change directory");
+            //    }
+            //}
+            //else
+            //{
+            //    replySender.SendReply(530, "not logged in ");
+            //}
         }
 
         private void ExecuteAborCommand()
@@ -142,101 +161,168 @@ namespace SharpFTP.Server.Protocol.CommandExecution
 
         private void ExecuteDeleCommand(string parameter)
         {
-            if (login.IsLogged)
-            {
-                UserInfo userInfo = login.GetUserInfo();
-                string winPath = pathConverter.ConvertToWindowsPath(parameter, login.DirectorySession.OriginDirectory);
+            string winPath = GetWindowsPath(parameter);
+            bool haveAccess = usersManage.HaveAccess(login.GetUserInfo(), winPath);
 
-                if(usersManage.CanSeePath(userInfo, parameter))
-                {   
-                    if ((usersManage.GetPathPermission(userInfo, parameter) & FilePermission.Write) == FilePermission.Write)
+            if (haveAccess)
+            {
+                FilePermission permission = usersManage.GetPathPermission(login.GetUserInfo(), winPath);
+                if ((permission & FilePermission.Write) == FilePermission.Write)
+                {
+                    bool mutexOn = FileMutex.MutexOn(winPath);
+                    if (mutexOn)
                     {
-                        directoryContext.DeletePath(winPath);
+                        bool deleted = TryDeleteFile(winPath);
+                        if (deleted)
+                        {
+                            replySender.SendReply(250, "file deleted successful");
+                        }
+                        else
+                        {
+                            replySender.SendReply(450, "exception throw during deleting file");
+                        }
+                        FileMutex.MutexOff(winPath);
                     }
-                    replySender.SendReply(250, "file deleted successful");
+                    else
+                    {
+                        replySender.SendReply(450, "file unavailable, busy");
+                    }
                 }
-                else replySender.SendReply(450, "action not taken");
+                else
+                {
+                    replySender.SendReply(550, "permission error, cannot edit file");
+                }
+            }
+        }
+
+        private bool TryDeleteFile(string winPath)
+        {
+            bool success = false;
+            try
+            {
+                File.Delete(winPath);
+                success = true;
+            }
+            catch (Exception)
+            {
                 
             }
-            else replySender.SendReply(530, "not logged in");
+
+            return success;
         }
 
         private void ExecuteStorCommand(string parameter)
         {
-            if (login.IsLogged)
-            {
-                if (directoryContext.CanCreateDirectory(parameter, login.UserName))
-                {
-                    string winPath = pathConverter.ConvertToWindowsPath(parameter, directoryContext.GetOriginDirectory(login.UserName));
+            string winPath = GetWindowsPath(parameter);
+            bool mutexOn = FileMutex.MutexOn(winPath);
+            UserInfo user = login.GetUserInfo();
 
-                    if (transferParameters.DataTransfer.TransferInProgress)
+            if (mutexOn)
+            {
+                if (usersManage.HaveAccess(user, winPath))
+                {
+                    if ((usersManage.GetPathPermission(user, winPath) & FilePermission.Write) == FilePermission.Write)
                     {
-                        transferParameters.DataTransfer.AbortTransfer();
-                        replySender.SendReply(426, "aborted last transfering");
+                        if (File.Exists(winPath))
+                        {
+                            File.Delete(winPath);
+                        }
+                        //ok - can receive file bytes
+                        replySender.SendReply(150, "data transfer opened - start downloading file");
+                        ReceiveFile(winPath);
                     }
-                    replySender.SendReply(150, "data transfer opened - start downloading file");
-                    FileStream fileStream = new FileStream(winPath, FileMode.OpenOrCreate);
-                    transferParameters
-                        .DataTransfer
-                        .RunReceiveBytesTask
-                        (fileStream, 1000, 
-                        () => DataTransferSuccessful("received file successful"));
+                    else replySender.SendReply(450, "invalid file permission");
                 }
                 else
                 {
-                    replySender.SendReply(450, "requested action not taken");
+                    replySender.SendReply(450, "access denied");
                 }
             }
-            else
+            else replySender.SendReply(450, "store command rejected - file busy");
+        }
+
+        private void ReceiveFile(string savePath)
+        {
+            FileStream fs = new FileStream(savePath, FileMode.OpenOrCreate);
+
+            FTPDataTransfer.TaskEndDelegate receivingSuccessful  = delegate (int receivedBytes)
             {
-                replySender.SendReply(530, "not logged in");
-            }
+                transferParameters.DataTransfer.CloseConnection();
+                string msg = $"received all - closing connection ({receivedBytes} bytes)";
+                replySender.SendReply(226, msg);
+                fs.Close();
+                FileMutex.MutexOff(savePath);
+            };
+
+            FTPDataTransfer.TaskEndDelegate cancell = delegate (int receivedBytes)
+            {
+                fs.Close();
+                FileMutex.MutexOff(savePath);
+            };
+
+            transferParameters.DataTransfer.RunReceiveBytesTask(fs, 500, receivingSuccessful,cancell);
         }
 
         private void ExecuteMkdCommand(string parameter)
         {
-            if (login.IsLogged)
+            string winPath = GetWindowsPath(parameter);
+            bool canAccess = usersManage.HaveAccess(login.GetUserInfo(), winPath);
+
+            if (!Directory.Exists(winPath))
             {
-                
-                if (directoryContext.CanCreateDirectory(parameter, login.UserName))
-                {
-                    directoryContext.CreateDirectory(parameter);
-                    replySender.SendReply(257, $"\"{parameter}\" created");
-                }
-                else
-                {
-                    replySender.SendReply(550, "cannot create directory.");
-                }
+                Directory.CreateDirectory(winPath);
+                replySender.SendReply(257, "directory created successful");
             }
             else
             {
-                replySender.SendReply(530, "cannot create directory - not logged in");
+                replySender.SendReply(550, "MKD refuse - directory already exist");
             }
         }
 
         private void ExecuteRetrCommand(string parameter)
         {
-            string winPath = pathConverter.ConvertToWindowsPath(parameter, directoryContext.GetOriginDirectory(login.UserName));
+            string fileName = pathConverter.ConvertToWindowsFileName(parameter, login.DirectorySession.OriginDirectory);
 
-            if ((directoryContext.GetFilePermission(winPath, login.UserName) & FilePermission.Read) == FilePermission.Read)
+            if (usersManage.HaveAccess(login.GetUserInfo(), fileName) && File.Exists(fileName))
             {
-                Stream fileStream = directoryContext.GetFileStream(winPath);
-
-                if (transferParameters.DataTransfer.TransferInProgress)
+                FilePermission permission = usersManage.GetPathPermission(login.GetUserInfo(), fileName);
+                if ((permission & FilePermission.Read) == FilePermission.Read)
                 {
-                    transferParameters.DataTransfer.TransferDataTaskCancell.Cancel();
-                    replySender.SendReply(426, "aborting last file transfer.");
+                    if (FileMutex.MutexOn(fileName))
+                    {
+                        SendFileBytes(fileName);
+                    }
+                    else
+                    {
+                        replySender.SendReply(450, "retr not taken - file busy (mutex on)");
+                    }
                 }
-                replySender.SendReply(150, "transfer socket open - start sending");
-                transferParameters.DataTransfer.RunSendStreamTask(
-                    fileStream,
-                    (bytesTransmitted) =>
-                     { DataTransferSuccessful("data transfere succesfull"); fileStream.Close(); });
+                else replySender.SendReply(550, "access denied - need read permission");
+
             }
-            else
+            else replySender.SendReply(550, "retr not taken");
+        }
+
+        private void SendFileBytes(string winPath)
+        {
+            FileStream fileStream = new FileStream(winPath, FileMode.Open);
+            FTPDataTransfer.TaskEndDelegate successDelegate 
+                =  delegate (int bytesSended)
             {
-                replySender.SendReply(550, "no access");
-            }
+                transferParameters.DataTransfer.CloseConnection();
+                replySender.SendReply(226, $"bytes received successful ({bytesSended}) - closing data transfer");
+                fileStream.Close();
+                FileMutex.MutexOff(winPath);
+            };
+            FTPDataTransfer.TaskEndDelegate cancellDelegate = delegate (int bytesSended) 
+            {
+                FileMutex.MutexOff(winPath);
+                fileStream.Close();
+            };
+            
+
+            replySender.SendReply(150, "opening data connection");
+            transferParameters.DataTransfer.RunSendStreamTask(fileStream,successDelegate,cancellDelegate);
         }
 
         private void ExecutePwdCommand()
@@ -247,47 +333,64 @@ namespace SharpFTP.Server.Protocol.CommandExecution
 
         private void ExecuteSizeCommand(string parameter)
         {
-            replySender.SendReply(213, "12345");
+            replySender.SendReply(213, "1");
         }
 
         private void ExecuteListCommand(string parameter)
         {
-            parameter = parameter.Trim();
+            string winPath = login.DirectorySession.WorkingWindowsDirectory;//GetWindowsPath(login.DirectorySession.WorkingUnixDirectory);
+            bool permission = usersManage.HaveAccess(login.GetUserInfo(), winPath);
+            bool exist = Directory.Exists(winPath);
 
-            bool permission = directoryContext.CanChangeDirectory(login.DirectorySession.WorkingWindowsDirectory, login.UserName);
-
-            if(permission)
-            {                
-                string[] files = login.DirectorySession.GetFilesNamesInUnixFormat();
-                string[] directories = login.DirectorySession.GetDirectoriesInUnixFormat();
-                string[] paths = files.Concat(directories).ToArray();
-                string singleLineText = string.Join("\r\n", paths);
-                int a = singleLineText.Length;
-                if (transferParameters.DataTransfer.TransferInProgress)
-                {
-                    transferParameters.DataTransfer.TransferDataTaskCancell.Cancel();
-                    replySender.SendReply(426, "aborting last file transfer.");
-                }
-                replySender.SendReply(150, "transfer socket open - start sending");
-
-                transferParameters.DataTransfer.RunSendTextDataTask(
-                    singleLineText,
-                    (bytesTransmitted) => 
-                    {
-                        DataTransferSuccessful(
-                        $"sended file list");
-                    });
+            if(permission && exist)
+            {
+                SendFileList(winPath);
             }
             else
             {
-                replySender.SendReply(450, "file action not taken");
+                string msg = "file action not taken";
+                if (!exist)
+                    msg = string.Format("{0} '{1}'", msg, "directory not exist");
+                if (!permission)
+                    msg = string.Format("{} '{1}'", msg, "no access");
+
+
+                int code = exist ? 450 : 530;
+
+                replySender.SendReply(code, msg);
             }
         }
 
-        private void DataTransferSuccessful(string message)
+        private void SendFileList(string winPath)
         {
-            transferParameters.DataTransfer.CloseConnection();
-            replySender.SendReply(226, message);
+            string fileList = GetFileListString(winPath);
+
+            if (transferParameters.DataTransfer.TransferInProgress)
+            {
+                transferParameters.DataTransfer.TransferDataTaskCancell.Cancel();
+                replySender.SendReply(426, "aborting last file transfer.");
+            }
+
+            replySender.SendReply(150, "transfer socket opened - start sending");
+
+            FTPDataTransfer.TaskEndDelegate successful = delegate (int sendedBytes)
+            {
+                transferParameters.DataTransfer.CloseConnection();
+                replySender.SendReply(226, $"closing data connection - sended file list ({sendedBytes} Bytes)");
+            };
+            FTPDataTransfer.TaskEndDelegate cancell = delegate (int sendedBytes) {/* no action*/ };
+
+            transferParameters.DataTransfer.RunSendTextDataTask(fileList, successful, cancell);
+        }
+
+        private string GetFileListString(string winPath)
+        {
+            string[] files = login.DirectorySession.GetFilesNamesInUnixFormat();
+            string[] directories = login.DirectorySession.GetDirectoriesInUnixFormat();
+            string[] paths = files.Concat(directories).ToArray();
+            string singleLineText = string.Join("\r\n", paths);
+
+            return singleLineText;
         }
 
         private void ExecuteRestCommand(string parameter)
@@ -320,6 +423,21 @@ namespace SharpFTP.Server.Protocol.CommandExecution
             {
                 throw new Exception("incorrect parameter");
             }
+        }
+
+        private string GetWindowsPath(string unixPath)
+        {
+            string unix;
+            try
+            {
+                unix = pathConverter.ConvertToWindowsDirectory(unixPath, login.DirectorySession.OriginDirectory);
+            }
+            catch (Exception)
+            {
+                unix = string.Empty;
+            }
+
+            return unix;
         }
 
         public override Command[] GetImplementedCommands()

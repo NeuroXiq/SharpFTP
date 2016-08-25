@@ -35,9 +35,9 @@ namespace SharpFTP.Server
 
         }
 
-        public static void SetDataContext(UserDataContext userDataContext)
+        public static void SetDataContext(UserDataContext dataContext)
         {
-            userDataContext = userDataContext;
+            userDataContext = dataContext;
         }   
     }
 }

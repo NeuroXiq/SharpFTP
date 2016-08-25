@@ -15,33 +15,33 @@ namespace SharpFTP.Server.DataTransfer
         public CancellationTokenSource TransferDataTaskCancell { get; private set; }
         public int LastTransferBytesCount { get; private set; }
         public bool TransferInProgress { get; private set; }
-        public delegate void TaskCompleteSuccesfull(int bytesTransmited);
+        public delegate void TaskEndDelegate(int bytesTransmited);
 
         private static object threadSafe = new object();
         private TcpClient connectedClient;
         private NetworkStream networkStream;
         private Task transferTask;
         private TransferParameters transferParameters;
+        private bool isPassive;
 
-        private FTPDataTransfer(TcpClient connectedClient,TransferParameters parameters)
+        private FTPDataTransfer(TcpClient connectedClient,TransferParameters parameters,bool isPassive)
         {
             this.connectedClient = connectedClient;
             this.networkStream = connectedClient.GetStream();
             this.transferParameters = parameters;
+            this.isPassive = isPassive;
             TransferDataTaskCancell = new CancellationTokenSource();
         }
 
-        public static FTPDataTransfer AcceptPasvConnection(int port,TransferParameters parameters)
+        public static FTPDataTransfer AcceptPasvConnection(TcpListener listener,TransferParameters parameters)
         {
             lock (threadSafe)
             {
                 TcpClient client;
-                TcpListener listener = new TcpListener(IPAddress.Any, port);
-                listener.Start();
                 client = listener.AcceptTcpClient();
                 listener.Stop();
 
-                return new FTPDataTransfer(client,parameters);
+                return new FTPDataTransfer(client,parameters,true);
             }
         }
 
@@ -52,7 +52,7 @@ namespace SharpFTP.Server.DataTransfer
                 TcpClient client = new TcpClient();
                 client.Connect(new IPEndPoint(ipAddress, port));
 
-                return new FTPDataTransfer(client,parameters);
+                return new FTPDataTransfer(client,parameters,false);
             }
         }
 
@@ -84,53 +84,7 @@ namespace SharpFTP.Server.DataTransfer
         /// <param name="timeout">
         /// Maximum wait time for new packet in miliseconds
         /// </param>
-        public void RunReceiveBytesTask(Stream receiveStream,int timeout, Action taskCompleteSuccessfulAction)
-        {
-            ThrowIfParamsIncorrect();
-            if (TransferInProgress)
-                throw new InvalidOperationException("Cannot run second transfer task until previos is not completed");
-
-            transferTask = Task.Factory.StartNew(() => 
-            { 
-                TransferInProgress = false;
-                {
-                    int bufferSize = 64 * 64;
-                    int readed = 0;
-                    int readedAll = 0;
-                    byte[] buffer = new byte[bufferSize];
-
-                    do
-                    {
-                        readedAll += (readed = networkStream.Read(buffer, 0, bufferSize));
-                        if (readed == 0)
-                        {
-                            Thread.Sleep(timeout);
-                            readedAll += (readed = networkStream.Read(buffer, 0, bufferSize));
-                            if (readed == 0)
-                                break;
-                        }
-
-                        receiveStream.Write(buffer, 0, readed);
-                        buffer = new byte[bufferSize];
-
-                    } while (!TransferDataTaskCancell.Token.IsCancellationRequested);
-
-                    LastTransferBytesCount = readedAll;
-                }
-                TransferInProgress = false;
-
-                if (!TransferDataTaskCancell.Token.IsCancellationRequested)
-                    taskCompleteSuccessfulAction();
-            });
-        }
-
-        public void RunSendTextDataTask(string text,TaskCompleteSuccesfull action)
-        {
-            MemoryStream stream = new MemoryStream(Encoding.ASCII.GetBytes(text));
-            RunSendStreamTask(stream, action);
-        }
-        
-        public void RunSendStreamTask(Stream stream, TaskCompleteSuccesfull action)
+        public void RunReceiveBytesTask(Stream receiveStream,int timeout, TaskEndDelegate taskCompleteSuccessful,TaskEndDelegate taskCancelled)
         {
             ThrowIfParamsIncorrect();
             if (TransferInProgress)
@@ -138,42 +92,121 @@ namespace SharpFTP.Server.DataTransfer
 
             transferTask = Task.Factory.StartNew(() =>
             {
-                int allReadedBytes = 0;
+                int readedAll = ReceiveBytesFromClient(receiveStream, timeout);
 
-                lock (threadSafe)
+                if(isPassive)
                 {
-                    TransferInProgress = true;
+                    int port = (connectedClient.Client.LocalEndPoint as IPEndPoint).Port;
+                    FTPDynamicServerState.RelasePort(port);
                 }
-                if (stream.Length == 0)
-                {
-                    LastTransferBytesCount = 0;
-                }
-                else
-                {
-                    TransferDataTaskCancell = new CancellationTokenSource();
-                    int bufferSize = 64 * 64;
-                    int readedBytes = 0;
-                    
 
-                    byte[] buffer = new byte[bufferSize];
+                if (!TransferDataTaskCancell.Token.IsCancellationRequested)
+                    taskCompleteSuccessful?.Invoke(readedAll);
+                else taskCompleteSuccessful?.Invoke(readedAll);
+            });
+        }
 
-                    do
+        private int ReceiveBytesFromClient(Stream receiveStream, int timeout)
+        {
+            TransferInProgress = false;
+
+            int readedAll = 0;
+            {
+                int bufferSize = 64 * 64;
+                int readed = 0;
+
+                byte[] buffer = new byte[bufferSize];
+
+                do
+                {
+                    readedAll += (readed = networkStream.Read(buffer, 0, bufferSize));
+                    if (readed == 0)
                     {
-                        allReadedBytes += (readedBytes = stream.Read(buffer, 0, bufferSize));
-                        networkStream.Write(buffer, 0, readedBytes);
-                        buffer = new byte[bufferSize];
+                        Thread.Sleep(timeout);
+                        readedAll += (readed = networkStream.Read(buffer, 0, bufferSize));
+                        if (readed == 0)
+                            break;
+                    }
 
-                    } while (readedBytes == bufferSize && !TransferDataTaskCancell.Token.IsCancellationRequested);
-                    LastTransferBytesCount = allReadedBytes;
-                }
+                    receiveStream.Write(buffer, 0, readed);
+                    buffer = new byte[bufferSize];
 
-                lock (threadSafe)
+                } while (!TransferDataTaskCancell.Token.IsCancellationRequested);
+
+                LastTransferBytesCount = readedAll;
+
+            }
+            TransferInProgress = false;
+            return readedAll;
+        }
+
+        public void RunSendTextDataTask(string text,TaskEndDelegate taskCompletedSuccessful,TaskEndDelegate taskCancelled)
+        {
+            MemoryStream stream = new MemoryStream(Encoding.ASCII.GetBytes(text));
+            RunSendStreamTask(stream, taskCompletedSuccessful,taskCancelled);
+        }
+        
+        public void RunSendStreamTask(Stream stream, TaskEndDelegate taskCompletedSuccessful,TaskEndDelegate taskCancelled)
+        {
+            ThrowIfParamsIncorrect();
+            if (TransferInProgress)
+                throw new InvalidOperationException("Cannot run second transfer task until previos is not completed");
+
+            transferTask = Task.Factory.StartNew(() =>
+            {
+                int allReadedBytes = SendSteamToClient(stream);
+
+                if (isPassive)
                 {
-                    TransferInProgress = false;
+                    int port = (connectedClient.Client.LocalEndPoint as IPEndPoint).Port;
+                    FTPDynamicServerState.RelasePort(port);
                 }
-                action?.Invoke(allReadedBytes);
 
-            },this.TransferDataTaskCancell.Token);
+                if (!TransferDataTaskCancell.Token.IsCancellationRequested)
+                    taskCompletedSuccessful?.Invoke(allReadedBytes);
+                else taskCancelled?.Invoke(allReadedBytes);
+
+            }, TransferDataTaskCancell.Token);
+            
+        }
+
+        private int SendSteamToClient(Stream stream)
+        {
+            int allReadedBytes = 0;
+
+            lock (threadSafe)
+            {
+                TransferInProgress = true;
+            }
+            if (stream.Length == 0)
+            {
+                LastTransferBytesCount = 0;
+            }
+            else
+            {
+                TransferDataTaskCancell = new CancellationTokenSource();
+                int bufferSize = 64 * 64;
+                int readedBytes = 0;
+
+
+                byte[] buffer = new byte[bufferSize];
+
+                do
+                {
+                    allReadedBytes += (readedBytes = stream.Read(buffer, 0, bufferSize));
+                    networkStream.Write(buffer, 0, readedBytes);
+                    buffer = new byte[bufferSize];
+
+                } while (readedBytes == bufferSize && !TransferDataTaskCancell.Token.IsCancellationRequested);
+                LastTransferBytesCount = allReadedBytes;
+            }
+
+            lock (threadSafe)
+            {
+                TransferInProgress = false;
+            }
+
+            return allReadedBytes;
         }
 
         public void AbortTransfer()
@@ -191,6 +224,7 @@ namespace SharpFTP.Server.DataTransfer
         {
             try
             {
+                connectedClient.GetStream().Flush();
                 AbortTransfer();
                 connectedClient.Close();
                 connectedClient.Dispose();
